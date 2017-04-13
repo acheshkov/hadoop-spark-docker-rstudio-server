@@ -1,0 +1,102 @@
+FROM hadoop-spark-master:latest
+
+# Add R list
+# RUN apt-get remove r-base-core
+RUN echo 'deb http://cloud.r-project.org/bin/linux/debian jessie-cran3/' | tee -a /etc/apt/sources.list && \
+    apt-key adv --keyserver keys.gnupg.net --recv-key 6212B7B7931C4BB16280BA1306F90DE5381BA480
+#RUN add-apt-repository ppa:marutter/rdev
+RUN apt-get update && apt-get -y install r-base r-base-dev
+#RUN apt-get upgrade
+
+
+#RUN apt-get install -y software-properties-common
+#RUN add-apt-repository ppa:openjdk-r/ppa 
+RUN apt-get update && apt-get install -yq python python-dev python-setuptools libsasl2-modules 
+
+
+# packages
+RUN apt-get update && apt-get install -yq --no-install-recommends --force-yes \
+    wget \
+    unzip \
+    git \
+    openjdk-7-jdk \
+    maven \
+    libjansi-java \
+    libsvn1 \
+    libcurl3 \
+#    python \
+#    python-dev \
+#    python-setuptools && \
+#    r-base-core \
+#    r-base \
+#    r-base-dev \
+    libsasl2-modules && \
+    rm -rf /var/lib/apt/lists/*
+
+# Overall ENV vars
+ENV SPARK_VERSION 1.6.2
+ENV MESOS_BUILD_VERSION 0.28.0-2.0.16
+
+# Set Hadoop config directory
+ENV HADOOP_CONF_DIR /etc/hadoop
+
+# Set Spark home directory
+ENV SPARK_HOME /opt/spark-1.6.2
+
+# Set native Mesos library path
+ENV MESOS_NATIVE_JAVA_LIBRARY /usr/local/lib/libmesos.so
+
+# Mesos install
+RUN wget http://repos.mesosphere.com/ubuntu/pool/main/m/mesos/mesos_$MESOS_BUILD_VERSION.ubuntu1404_amd64.deb && \
+   dpkg -i mesos_$MESOS_BUILD_VERSION.ubuntu1404_amd64.deb && \
+   rm mesos_$MESOS_BUILD_VERSION.ubuntu1404_amd64.deb
+
+# Spark ENV vars
+# ENV SPARK_VERSION_STRING spark-$SPARK_VERSION-bin-hadoop2.6
+# ENV SPARK_DOWNLOAD_URL http://d3kbcqa49mib13.cloudfront.net/$SPARK_VERSION_STRING.tgz
+
+# Download and unzip Spark
+#RUN wget $SPARK_DOWNLOAD_URL && \
+#    mkdir -p $SPARK_HOME && \
+#    tar xvf $SPARK_VERSION_STRING.tgz -C /tmp && \
+#    cp -rf /tmp/$SPARK_VERSION_STRING/* $SPARK_HOME && \
+#    rm -rf -- /tmp/$SPARK_VERSION_STRING && \
+#    rm spark-$SPARK_VERSION-bin-hadoop2.6.tgz
+
+ENV LIVY_DOWNLOAD_URL http://archive.cloudera.com/beta/livy/livy-server-0.3.0.zip
+#RUN wget $LIVY_DOWNLOAD_URL -O livy.tmp.zip && \
+#    unzip livy.tmp.zip -d /opt/ && \
+#    rm livy.tmp.zip && \
+#    mkdir $LIVY_APP_PATH/logs
+
+
+ENV LIVY_BUILD_VERSION livy-server-0.4.0-SNAPSHOT
+
+# Set install path for Livy
+ENV LIVY_APP_PATH /apps/$LIVY_BUILD_VERSION
+
+# Set build path for Livy
+ENV LIVY_BUILD_PATH /apps/build/livy
+
+
+
+# Clone Livy repository
+RUN mkdir -p /apps/build && \
+    cd /apps/build && \
+    git clone https://github.com/cloudera/livy.git && \
+    cd $LIVY_BUILD_PATH && \
+    mvn -DskipTests -Dspark.version=$SPARK_VERSION clean package
+
+#RUN unzip $LIVY_BUILD_PATH/assembly/target/$LIVY_BUILD_VERSION.zip -d /apps && \
+#    rm -rf $LIVY_BUILD_PATH && \
+#    mkdir -p $LIVY_APP_PATH/upload
+	
+# Add custom files, set permissions
+ADD livy-entrypoint.sh /livy-entrypoint.sh
+
+RUN chmod +x /livy-entrypoint.sh
+
+# Expose port
+EXPOSE 8998
+
+ENTRYPOINT ["/livy-entrypoint.sh"]
